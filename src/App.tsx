@@ -27,6 +27,7 @@ import { SecretsManager } from './providers/secrets';
 import { QuotaManager } from './providers/quota';
 import { AircraftAdapters } from './providers/adapters';
 import { adaptFr24BoundsResponse } from './providers/adapters/fr24';
+import { findRouteInDatabase, resolveCommercialFlight } from './utils/flightCrossReference';
 
 export default function App() {
   const [lang, setLang] = useSetting<LanguageCode>('general.language');
@@ -342,14 +343,21 @@ export default function App() {
 
     const loadRouteAndPhoto = async () => {
       let customRoute = null;
+      let matchedFlightNumber = '';
+      let matchType = '';
+      let customRoutes: any[] = [];
+      const flightClean = selectedAircraft.callsign.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
       try {
         const saved = localStorage.getItem('ircap_custom_routes');
         if (saved) {
-          const customRoutes = JSON.parse(saved);
-          const flightClean = selectedAircraft.callsign.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-          customRoute = customRoutes.find(
-            (r: any) => r.callsign.toUpperCase() === flightClean || r.callsign_iata?.toUpperCase() === flightClean
-          );
+          customRoutes = JSON.parse(saved);
+          const matchResult = findRouteInDatabase(flightClean, customRoutes);
+          if (matchResult) {
+            customRoute = matchResult.matchedRoute;
+            matchedFlightNumber = matchResult.commercialFlight;
+            matchType = matchResult.matchType;
+          }
         }
       } catch (e) {
         console.error(e);
@@ -357,28 +365,33 @@ export default function App() {
 
       if (customRoute) {
         // Resolve coordinates dynamically from the master airports database
-        const originAp = airports.find((a) => a.iataCode?.toUpperCase() === customRoute.origin.iata_code.toUpperCase());
-        const destAp = airports.find((a) => a.iataCode?.toUpperCase() === customRoute.destination.iata_code.toUpperCase());
+        const origIata = customRoute.origin?.iata_code || customRoute.origin?.iata || '';
+        const destIata = customRoute.destination?.iata_code || customRoute.destination?.iata || '';
+        const originAp = airports.find((a) => a.iataCode?.toUpperCase() === origIata.toUpperCase());
+        const destAp = airports.find((a) => a.iataCode?.toUpperCase() === destIata.toUpperCase());
 
         const adaptedRoute = {
           origin: {
-            iata: customRoute.origin.iata_code,
-            name: customRoute.origin.name,
-            city: customRoute.origin.municipality,
-            latitude: originAp ? originAp.lat : (customRoute.origin.latitude || 0),
-            longitude: originAp ? originAp.lon : (customRoute.origin.longitude || 0)
+            iata: origIata,
+            name: customRoute.origin?.name || `${origIata} Airport`,
+            city: customRoute.origin?.municipality || customRoute.origin?.city || origIata,
+            latitude: originAp ? originAp.lat : (customRoute.origin?.latitude || 0),
+            longitude: originAp ? originAp.lon : (customRoute.origin?.longitude || 0)
           },
           destination: {
-            iata: customRoute.destination.iata_code,
-            name: customRoute.destination.name,
-            city: customRoute.destination.municipality,
-            latitude: destAp ? destAp.lat : (customRoute.destination.latitude || 0),
-            longitude: destAp ? destAp.lon : (customRoute.destination.longitude || 0)
+            iata: destIata,
+            name: customRoute.destination?.name || `${destIata} Airport`,
+            city: customRoute.destination?.municipality || customRoute.destination?.city || destIata,
+            latitude: destAp ? destAp.lat : (customRoute.destination?.latitude || 0),
+            longitude: destAp ? destAp.lon : (customRoute.destination?.longitude || 0)
           },
           airline: {
             name: customRoute.airline?.name || 'Unknown Airline',
             iata: customRoute.airline?.iata || ''
-          }
+          },
+          flightNumber: matchedFlightNumber || customRoute.flightNumber || customRoute.callsign,
+          callsign: selectedAircraft.callsign,
+          matchType
         };
 
         try {
@@ -405,12 +418,51 @@ export default function App() {
           }
         }
       } else {
+        // Fetch from API enrich endpoint
         try {
           const resp = await fetch(`/api/v2/enrich/${encodeURIComponent(selectedAircraft.callsign)}/${encodeURIComponent(selectedAircraft.registration)}`);
           if (resp.ok) {
             const data = await resp.json();
             if (isMounted) {
-              setSelectedEnrichment(data);
+              let finalRoute = data.route;
+
+              // If API returned a route, cross-reference with our stored custom database!
+              if (finalRoute && customRoutes.length > 0) {
+                const origIata = finalRoute.origin?.iata_code || finalRoute.origin?.iata;
+                const destIata = finalRoute.destination?.iata_code || finalRoute.destination?.iata;
+                const crossMatch = findRouteInDatabase(flightClean, customRoutes, {
+                  originIata: origIata,
+                  destinationIata: destIata,
+                  airlineName: finalRoute.airline?.name
+                });
+
+                if (crossMatch) {
+                  finalRoute = {
+                    ...finalRoute,
+                    flightNumber: crossMatch.commercialFlight,
+                    callsign: selectedAircraft.callsign,
+                    matchType: crossMatch.matchType
+                  };
+                }
+              }
+
+              // Also check direct callsign mapping store
+              if (finalRoute && !finalRoute.flightNumber) {
+                const comm = resolveCommercialFlight(flightClean);
+                if (comm) {
+                  finalRoute = {
+                    ...finalRoute,
+                    flightNumber: comm,
+                    callsign: selectedAircraft.callsign,
+                    matchType: 'mapping'
+                  };
+                }
+              }
+
+              setSelectedEnrichment({
+                route: finalRoute,
+                photo: data.photo || undefined
+              });
               setLoadingEnrichment(false);
             }
           } else {

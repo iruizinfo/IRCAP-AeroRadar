@@ -47,9 +47,12 @@ export interface ProviderStatusInfo {
 
 export interface EnrichmentData {
   route?: {
-    origin: { iata: string; name: string; city: string };
-    destination: { iata: string; name: string; city: string };
+    origin: { iata: string; name: string; city: string; latitude?: number; longitude?: number };
+    destination: { iata: string; name: string; city: string; latitude?: number; longitude?: number };
     airline: { name: string; iata: string };
+    flightNumber?: string;
+    callsign?: string;
+    matchType?: string;
   };
   photo?: {
     url: string;

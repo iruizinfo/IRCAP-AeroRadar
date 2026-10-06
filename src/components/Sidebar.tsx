@@ -48,7 +48,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ aircraft, onClose, lang, units
             <Plane className="w-5 h-5" style={{ transform: `rotate(${aircraft.trackDeg}deg)` }} />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white">{aircraft.callsign}</h2>
+            <div className="flex items-center space-x-2 flex-wrap">
+              <h2 className="text-lg font-bold text-white">
+                {enrichment?.route?.flightNumber || aircraft.callsign}
+              </h2>
+              {enrichment?.route?.flightNumber && enrichment.route.flightNumber.toUpperCase() !== aircraft.callsign.toUpperCase() && (
+                <span className="bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[9px] px-1.5 py-0.5 rounded font-mono font-bold">
+                  ATC: {aircraft.callsign}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-400">{aircraft.registration} • {aircraft.type}</p>
           </div>
         </div>
@@ -151,6 +160,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ aircraft, onClose, lang, units
                   <div className="font-bold text-white">{enrichment.route.destination.iata} - {enrichment.route.destination.city}</div>
                 </div>
               </div>
+              {enrichment.route.flightNumber && enrichment.route.flightNumber.toUpperCase() !== aircraft.callsign.toUpperCase() && (
+                <div className="bg-cyan-950/40 border border-cyan-500/30 rounded p-2 text-[11px] text-cyan-300 flex items-center justify-between">
+                  <span>Cruce: <strong className="text-white">{aircraft.callsign}</strong> (ATC)</span>
+                  <span className="text-slate-400">➔</span>
+                  <span>Vuelo: <strong className="text-white">{enrichment.route.flightNumber}</strong></span>
+                </div>
+              )}
               {enrichment.route.airline && (
                 <div className="flex items-center space-x-1.5 text-slate-300">
                   <Building2 className="w-3.5 h-3.5 text-slate-400" />
