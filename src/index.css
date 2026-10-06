@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+/* Leaflet Custom Overrides */
+.custom-dark-popup .leaflet-popup-content-wrapper {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.custom-dark-popup .leaflet-popup-tip {
+  background: #0f172a !important;
+  border: 1px solid #334155 !important;
+}
+
+/* Custom Tooltip styling to strip default Leaflet white bubble */
+.custom-aircraft-tooltip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  pointer-events: none !important;
+}
+
+.custom-aircraft-tooltip::before {
+  display: none !important;
+}
